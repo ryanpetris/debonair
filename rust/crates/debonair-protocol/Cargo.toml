@@ -1,0 +1,15 @@
+[package]
+name = "debonair-protocol"
+description = "Messages and framing of the Debonair serial API"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+prost.workspace = true
+
+[build-dependencies]
+prost-build = "=0.14.4"
+protox = "=0.9.1"

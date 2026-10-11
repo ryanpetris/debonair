@@ -1,0 +1,18 @@
+[package]
+name = "debonair-usb"
+description = "USB serial port carrying the Debonair serial API"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+debonair-protocol.workspace = true
+debonair-core.workspace = true
+embassy-usb = { version = "=0.6.0", default-features = false }
+embassy-sync.workspace = true
+embassy-futures.workspace = true
+
+[dev-dependencies]
+critical-section = { version = "=1.2.0", features = ["std"] }

@@ -1,0 +1,5 @@
+menu "Debonair"
+config DEBONAIR_DEVELOPMENT
+    bool "Enable development ROM bootloader entry"
+    default n
+endmenu

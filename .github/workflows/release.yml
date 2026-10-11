@@ -1,0 +1,144 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      epoch: ${{ steps.version.outputs.epoch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate release tag
+        id: version
+        run: |
+          test "$GITHUB_REF_TYPE" = tag
+          [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          version=${GITHUB_REF_NAME#v}
+          echo "DEBONAIR_VERSION=$version" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "epoch=$(git show -s --format=%ct HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git clang libclang-dev pkg-config xvfb
+      - name: Install Rust check components
+        run: |
+          cd rust
+          rustup component add clippy
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Check Rust, desktop and protocol
+        run: make check-rust check-desktop check-protocol
+      - name: Run the desktop against the simulated adapter
+        run: |
+          cargo build --locked --manifest-path rust/Cargo.toml -p debonair-sim
+          npm --prefix desktop run build
+          xvfb-run -a npm --prefix desktop run smoke -- out/smoke light
+  linux:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      DEBONAIR_VERSION: ${{ needs.validate.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.epoch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build portable applications
+        run: make package-desktop
+      - name: Prepare release archives
+        run: |
+          mkdir release
+          cp desktop/dist/*.AppImage desktop/dist/*.tar.gz release/
+          cd release
+          sha256sum ./* > SHA256SUMS-linux
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-linux
+          path: release/
+          compression-level: 0
+          if-no-files-found: error
+  firmware:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      DEBONAIR_VERSION: ${{ needs.validate.outputs.version }}
+      SOURCE_DATE_EPOCH: ${{ needs.validate.outputs.epoch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [pico_w, pico2_w, waveshare_rp2350b_plus_w, xiao_esp32s3]
+        profile: [production, development]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check firmware
+        run: make check-firmware BOARD='${{ matrix.board }}' PROFILE='${{ matrix.profile }}'
+      - name: Build firmware
+        run: make firmware BOARD='${{ matrix.board }}' PROFILE='${{ matrix.profile }}'
+      - name: Archive complete firmware package
+        env:
+          BOARD: ${{ matrix.board }}
+          # Development firmware is published as the debug build.
+          SUFFIX: ${{ matrix.profile == 'development' && '-debug' || '' }}
+        run: |
+          mkdir release
+          tar -C "build/firmware/$DEBONAIR_VERSION" -czf "release/debonair-firmware-$DEBONAIR_VERSION-$BOARD$SUFFIX.tar.gz" .
+          cd release
+          sha256sum ./*.tar.gz > "SHA256SUMS-firmware-$BOARD$SUFFIX"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-firmware-${{ matrix.board }}-${{ matrix.profile }}
+          path: release/
+          compression-level: 0
+          if-no-files-found: error
+  publish:
+    needs: [validate, linux, firmware]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      DEBONAIR_VERSION: ${{ needs.validate.outputs.version }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: release
+      - name: Verify release assets
+        working-directory: release
+        run: |
+          cat SHA256SUMS-* > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          test -f "debonair-desktop-$DEBONAIR_VERSION-x86_64.AppImage"
+          test -f "debonair-desktop-$DEBONAIR_VERSION-x64.tar.gz"
+          for board in pico_w pico2_w waveshare_rp2350b_plus_w xiao_esp32s3; do
+            test -f "debonair-firmware-$DEBONAIR_VERSION-$board.tar.gz"
+            test -f "debonair-firmware-$DEBONAIR_VERSION-$board-debug.tar.gz"
+          done
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes release/*.AppImage release/*.tar.gz release/SHA256SUMS
+          gh release edit "$RELEASE_TAG" --draft=false

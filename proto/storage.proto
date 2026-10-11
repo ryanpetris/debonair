@@ -1,0 +1,105 @@
+// The records the Dongle saves in its LittleFS filesystem. Each file holds one message, encoded as
+// protobuf without framing or length prefix; docs/storage-format.md names the message of each path.
+// An empty file holds no record, so every record has a field that writers always set.
+//
+// A field marked Required must be set for the record to be valid, and the firmware checks it. A
+// plain field reads its zero value as its default. An `optional` scalar or a message field has
+// explicit presence. Later firmware adds fields whose zero value or absence means what earlier
+// firmware did, and never changes the number, type or meaning of an existing field, so records can
+// gain fields without a new storage layout. Firmware ignores unknown fields.
+syntax = "proto3";
+
+package debonair.storage;
+
+// /format.pb: the filesystem's root record, written when storage is first opened.
+message Format {
+  // Required. Always 1.
+  uint32 format = 1;
+}
+
+// /adapter.pb: how the adapter appears to Targets. Without the file, the adapter uses the name
+// Debonair, offers a keyboard and a mouse, and pairs with Just Works.
+message Adapter {
+  // The name Targets see: 1..29 UTF-8 bytes, trimmed, without control characters. Absent selects
+  // the name Debonair.
+  optional string name = 1;
+  // Required: at least one of `keyboard` and `mouse`. Whether the adapter offers a keyboard.
+  bool keyboard = 2;
+  // Whether the adapter offers a mouse.
+  bool mouse = 3;
+  PairingSecurity security = 4;
+}
+
+enum PairingSecurity {
+  // Pairing completes without a passkey.
+  PAIRING_SECURITY_JUST_WORKS = 0;
+  // The Target shows a passkey that the user types into the app.
+  PAIRING_SECURITY_PASSKEY = 1;
+}
+
+// /combinations/<combination>/identity.pb: the Bluetooth identity roots of one combination of
+// keyboard and mouse. Keys are most-significant byte first.
+message Identity {
+  // Required. The 16-byte identity root.
+  bytes ir = 1;
+  // Required. The 16-byte encryption root.
+  bytes er = 2;
+  // Required. The 16-byte identity resolving key the adapter distributes: AES-128 under `ir` of
+  // the block whose last byte is 1 and whose other bytes are 0.
+  bytes irk = 3;
+}
+
+// /combinations/<combination>/bonds/<id>/bond.pb: a Target paired with one combination of keyboard
+// and mouse, in a form independent of any Bluetooth stack. The directory's ID orders the bonds
+// from the oldest pairing to the newest. This file commits the bond's existence.
+message Bond {
+  // Required. The Target's 6-byte identity address, most-significant byte first.
+  bytes address = 1;
+  // Whether the address is a random address.
+  bool random = 2;
+  // The encryption key size, at most 16.
+  uint32 key_size = 3;
+  // Whether the pairing was protected against man-in-the-middle attacks, as with a passkey.
+  bool authenticated = 4;
+  bool authorized = 5;
+  // Whether the pairing used LE Secure Connections.
+  bool secure_connections = 6;
+  // What the adapter distributed. Absent when the Bluetooth stack keeps none.
+  Keys local = 7;
+  // What the Target distributed, or the pairing's shared key. Absent when the Bluetooth stack
+  // keeps none.
+  Keys peer = 8;
+  // The mouse feature report the Target last set: its resolution multipliers. Absent until the
+  // Target sets it.
+  optional uint32 feature = 9;
+  // Identifies the GATT database the Target last discovered, at most 16 bytes. Empty when unknown.
+  // When it differs from the running firmware's database, the Target is told to discover again.
+  bytes database = 10;
+  // The Target's subscriptions in the database `database` identifies, at most 8.
+  repeated Subscription subscriptions = 11;
+}
+
+// Keys one side of a pairing distributed. A key that was not distributed is empty.
+message Keys {
+  // The 16-byte long-term key.
+  bytes ltk = 1;
+  // The encrypted diversifier that goes with `ltk`.
+  uint32 ediv = 2;
+  // The 8-byte random number that goes with `ltk`.
+  bytes rand = 3;
+  // The 16-byte identity resolving key.
+  bytes irk = 4;
+  // The 16-byte signature key.
+  bytes csrk = 5;
+  // The signing counter that goes with `csrk`.
+  uint32 sign_counter = 6;
+}
+
+// A Client Characteristic Configuration a Target wrote.
+message Subscription {
+  // Required. The attribute handle the Bluetooth stack keys the subscription by: nonzero, at most
+  // 65535.
+  uint32 handle = 1;
+  // The configuration value, at most 65535: bit 0 notifications, bit 1 indications.
+  uint32 value = 2;
+}

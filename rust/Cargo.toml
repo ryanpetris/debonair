@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["crates/debonair-protocol", "crates/debonair-core", "adapters/storage", "adapters/btstack", "adapters/usb", "crates/debonair-sim"]
+exclude = ["platforms/pico", "platforms/esp32s3"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.97"
+publish = false
+license = "MIT"
+
+[workspace.dependencies]
+debonair-protocol = { path = "crates/debonair-protocol" }
+debonair-core = { path = "crates/debonair-core" }
+prost = { version = "=0.14.4", default-features = false, features = ["derive"] }
+embassy-sync = "=0.8.0"
+embassy-futures = "=0.1.2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"

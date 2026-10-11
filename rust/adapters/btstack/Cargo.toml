@@ -1,0 +1,32 @@
+[package]
+name = "debonair-btstack"
+description = "Bluetooth LE HID peripheral on BTstack"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+# Compiles BTstack and the C adapter. Without it, only the HCI transport is built, for host tests.
+ffi = []
+
+[dependencies]
+debonair-core.workspace = true
+embassy-sync.workspace = true
+embassy-futures.workspace = true
+heapless = { version = "=0.9.3", default-features = false }
+
+[build-dependencies]
+cc = "=1.5.1"
+
+[dev-dependencies]
+critical-section = { version = "=1.2.0", features = ["std"] }
+
+[[test]]
+name = "peripheral"
+required-features = ["ffi"]
+
+[[test]]
+name = "identity"
+required-features = ["ffi"]

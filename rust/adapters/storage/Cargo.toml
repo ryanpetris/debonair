@@ -1,0 +1,15 @@
+[package]
+name = "debonair-storage"
+description = "Records in LittleFS on the Dongle's flash"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+debonair-core.workspace = true
+embedded-storage-async = "=0.4.2"
+littlefs2 = { version = "=0.8.1", default-features = false }
+delog = { version = "=0.1.8", default-features = false, features = ["portable-atomic"] }
+embassy-futures.workspace = true

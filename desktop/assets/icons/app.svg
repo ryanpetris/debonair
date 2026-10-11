@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#62a0ea"/>
+      <stop offset="1" stop-color="#1c71d8"/>
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#background)"/>
+  <!-- Keyboard -->
+  <rect x="96" y="260" width="320" height="150" rx="26" fill="#ffffff"/>
+  <g fill="#1c71d8">
+    <rect x="124" y="288" width="36" height="30" rx="7"/>
+    <rect x="174" y="288" width="36" height="30" rx="7"/>
+    <rect x="224" y="288" width="36" height="30" rx="7"/>
+    <rect x="274" y="288" width="36" height="30" rx="7"/>
+    <rect x="324" y="288" width="64" height="30" rx="7"/>
+    <rect x="124" y="332" width="36" height="30" rx="7"/>
+    <rect x="174" y="332" width="164" height="30" rx="7"/>
+    <rect x="352" y="332" width="36" height="30" rx="7"/>
+  </g>
+  <!-- Radio waves -->
+  <g fill="none" stroke="#ffffff" stroke-width="22" stroke-linecap="round">
+    <path d="M206 190 a70 70 0 0 1 100 0"/>
+    <path d="M166 150 a126 126 0 0 1 180 0"/>
+  </g>
+  <circle cx="256" cy="226" r="16" fill="#ffffff"/>
+</svg>

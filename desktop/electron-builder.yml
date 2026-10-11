@@ -1,0 +1,40 @@
+appId: dev.petris.debonair
+productName: Debonair
+executableName: debonair-desktop
+directories:
+  output: dist
+# The native modules ship N-API prebuilds that load in Electron as they are.
+npmRebuild: false
+files:
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
+  - assets/icons/*.png
+  - package.json
+  - "!**/*.map"
+  - "!node_modules/@serialport/bindings-cpp/prebuilds/**/*.musl.node"
+artifactName: ${name}-${version}-${arch}.${ext}
+linux:
+  target: [AppImage, tar.gz]
+  category: Utility
+  icon: assets/icons/app-512.png
+  synopsis: Use this computer as a Bluetooth keyboard and mouse
+  description: Captures this computer's keyboard and mouse and sends them to Bluetooth devices through a Debonair adapter.
+  desktop:
+    entry:
+      StartupWMClass: debonair-desktop
+      Keywords: bluetooth;keyboard;mouse;kvm;
+win:
+  target: [nsis, zip]
+  icon: assets/icons/app-512.png
+mac:
+  target: [dmg, zip]
+  category: public.app-category.utilities
+  icon: assets/icons/app-512.png
+extraFiles:
+  - from: ../LICENSE
+    to: LICENSE
+  - from: out/VERSION
+    to: VERSION
+  - from: ../configs/50-debonair.rules
+    to: 50-debonair.rules

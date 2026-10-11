@@ -1,0 +1,324 @@
+// The Debonair serial API between the app on the Client and the Dongle, carried over the
+// Dongle's USB serial port. Each frame is one protobuf message, COBS-encoded and followed by a zero
+// byte. docs/protocol describes discovery, framing, sessions, input and the compatibility rules.
+//
+// The Client sends ClientMessage frames. A Request is answered by exactly one Response carrying the
+// same id. Input is never answered: it is applied in the order it arrives, interleaved with
+// Requests, so a Client can stream it without waiting. The Dongle sends an Event whenever its status
+// changes or a Target needs something from the user.
+//
+// Fields marked Required must be set; a request without one gets ERROR_CODE_INVALID_VALUE. Other
+// plain fields are Defaulted: a missing value reads as zero. Fields declared optional are
+// Optional, and their comments say what a missing value means.
+syntax = "proto3";
+
+package debonair;
+
+// ---------------------------------------------------------------------------
+// Envelopes
+// ---------------------------------------------------------------------------
+
+// Client to Dongle. A frame that is not a ClientMessage, is longer than 512 bytes before COBS
+// encoding, or holds neither kind is answered with a Response whose id is 0 and whose error is
+// ERROR_CODE_INVALID_REQUEST.
+message ClientMessage {
+  oneof kind {
+    Request request = 1;
+    Input input = 2;
+  }
+}
+
+// Dongle to Client. A Client ignores a kind it does not know.
+message DongleMessage {
+  oneof kind {
+    Response response = 1;
+    Event event = 2;
+  }
+}
+
+message Request {
+  // Chosen by the Client and echoed in the Response. Nonzero: the Dongle answers frames it cannot
+  // read as a Request with id 0.
+  uint32 id = 1;
+  // Exactly one is set. A Request with none, or with a command newer than the firmware, which
+  // decodes as none, gets ERROR_CODE_UNKNOWN_COMMAND.
+  oneof command {
+    GetStatus get_status = 10;
+    SetConfig set_config = 11;
+    StartPairing start_pairing = 12;
+    StopPairing stop_pairing = 13;
+    EnterPasskey enter_passkey = 14;
+    Disconnect disconnect = 15;
+    ForgetTarget forget_target = 16;
+    SetBattery set_battery = 17;
+    Restart restart = 18;
+    // Development firmware only.
+    EnterBootloader enter_bootloader = 30;
+  }
+}
+
+// The answer to one Request. No result set means success with no result.
+message Response {
+  // The id of the Request this answers, or 0 for a frame the Dongle could not read as a Request.
+  uint32 id = 1;
+  oneof result {
+    Error error = 2;
+    Status status = 3;
+  }
+}
+
+// A Client ignores a kind it does not know.
+message Event {
+  oneof kind {
+    // Anything in Status changed. Carries the latest Status once earlier output has been sent, so
+    // changes made in the meantime arrive together.
+    Status status = 1;
+    // A Target asks for the passkey it shows. Answer with EnterPasskey.
+    PasskeyRequest passkey_request = 2;
+    // A pairing attempt finished.
+    PairingResult pairing_result = 3;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Requests
+// ---------------------------------------------------------------------------
+
+// Responds with Status.
+message GetStatus {}
+
+// Partial update: missing fields are left unchanged. Responds with Status once saved; a request
+// that changes nothing responds with Status and saves nothing. Returns ERROR_CODE_INVALID_VALUE
+// for an invalid name, an unknown security value or turning off both keyboard and mouse,
+// ERROR_CODE_NOT_READY when the adapter's storage did not open, and ERROR_CODE_STORAGE_FAILED when
+// saving fails; each leaves every setting unchanged. A change to keyboard or mouse changes how the
+// adapter appears to Targets, so the Dongle sends its Response and then restarts; each combination
+// of keyboard and mouse is paired separately.
+message SetConfig {
+  // 1..29 bytes of UTF-8 without control characters or leading or trailing whitespace. ""
+  // restores the default name.
+  optional string name = 1;
+  // Offers the keyboard, with consumer controls such as media keys. At least one of keyboard and
+  // mouse stays on.
+  optional bool keyboard = 2;
+  // Offers the mouse.
+  optional bool mouse = 3;
+  // Used by pairings that start after the change.
+  optional Security security = 4;
+}
+
+// Makes the adapter discoverable and lets a new Target pair. Pairing mode ends when a Target pairs
+// or StopPairing is sent. Returns ERROR_CODE_NOT_READY until Bluetooth has started.
+message StartPairing {}
+
+// Ends pairing mode. Returns ERROR_CODE_NOT_READY until Bluetooth has started.
+message StopPairing {}
+
+// Answers the open PasskeyRequest. Returns ERROR_CODE_NOT_READY until Bluetooth has started,
+// ERROR_CODE_NOT_FOUND when no PasskeyRequest is open, ERROR_CODE_INVALID_VALUE for a passkey over
+// 999999, and ERROR_CODE_BUSY or ERROR_CODE_RADIO_FAILED when the Bluetooth stack does not take the
+// answer.
+message EnterPasskey {
+  // 0..999999, the passkey the Target shows. Missing rejects the pairing.
+  optional uint32 passkey = 1;
+}
+
+// Disconnects the connected Target. A paired Target can connect again on its own. Returns
+// ERROR_CODE_NOT_READY until Bluetooth has started, ERROR_CODE_NOT_FOUND when no Target is
+// connected, and ERROR_CODE_BUSY or ERROR_CODE_RADIO_FAILED when the Bluetooth stack does not take
+// the request.
+message Disconnect {}
+
+// Removes the pairing with one Target, disconnecting it if it is connected, and responds once its
+// saved pairing is removed. Returns ERROR_CODE_NOT_READY until Bluetooth has started,
+// ERROR_CODE_INVALID_VALUE for an address that is not 6 bytes, ERROR_CODE_NOT_FOUND for a Target
+// that is not in Status.targets or that the Bluetooth stack cannot remove, and
+// ERROR_CODE_STORAGE_FAILED when removing its saved pairing failed.
+message ForgetTarget {
+  // Required. 6 bytes, as reported in Target.address.
+  bytes address = 1;
+  // As reported in Target.address_type.
+  AddressType address_type = 2;
+}
+
+// The battery level that Targets show for this keyboard and mouse. Not saved: the Dongle reports
+// 100 after it starts. Returns ERROR_CODE_INVALID_VALUE for a level over 100.
+message SetBattery {
+  // 0..100.
+  uint32 level = 1;
+}
+
+// Responds, then restarts the adapter.
+message Restart {}
+
+// Responds, then restarts into the ROM programming mode. Production firmware returns
+// ERROR_CODE_UNSUPPORTED.
+message EnterBootloader {}
+
+// ---------------------------------------------------------------------------
+// Input
+// ---------------------------------------------------------------------------
+
+// Input for the connected Target. Input for a device that SetConfig turned off, or with no kind
+// set, is ignored.
+message Input {
+  oneof kind {
+    KeyboardState keyboard = 1;
+    MouseInput mouse = 2;
+    ConsumerState consumer = 3;
+  }
+}
+
+// The complete set of held keyboard keys. Each message replaces the previous state, so a lost or
+// repeated message cannot leave a key held.
+message KeyboardState {
+  // Held modifiers as the HID keyboard modifier byte: bit 0 Left Control through bit 7 Right GUI.
+  // Higher bits are ignored.
+  uint32 modifiers = 1;
+  // HID Keyboard page usages of the other held keys, in the order they were pressed. Usages
+  // 0x04..0xDF are keys, of which the first six distinct ones are sent; with more held, the Target
+  // sees ErrorRollOver until no more than six are held. Modifier usages 0xE0..0xE7 are added to
+  // modifiers. Other usages are ignored.
+  bytes keys = 2;
+}
+
+// Held mouse buttons and motion since the previous MouseInput.
+message MouseInput {
+  // Held buttons: bit 0 primary, bit 1 secondary, bit 2 middle, bit 3 back, bit 4 forward. Higher
+  // bits are ignored.
+  uint32 buttons = 1;
+  // Relative pointer motion in Target pixels, positive right and down. Each of x, y, wheel and pan
+  // is limited to -131068..131068 per message.
+  sint32 x = 2;
+  sint32 y = 3;
+  // Relative scrolling in 1/120 of a wheel detent, positive up and right.
+  sint32 wheel = 4;
+  sint32 pan = 5;
+}
+
+// The complete set of held consumer controls, such as media and volume keys.
+message ConsumerState {
+  // HID Consumer page usages 0x001..0x3FF. The first two distinct ones are sent; others are
+  // ignored.
+  repeated uint32 usages = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Status
+// ---------------------------------------------------------------------------
+
+message Status {
+  // Required. Adapter ID: 16 uppercase hexadecimal digits, the same string as the USB serial
+  // number. Stable across boots.
+  string id = 1;
+  string firmware_version = 2;
+  // Board preset the firmware was built for, such as pico_w.
+  string board = 3;
+  // Development firmware, which accepts EnterBootloader.
+  bool development = 4;
+  // Required.
+  Config config = 5;
+  // The Bluetooth stack has started. Until then, and after it fails, StartPairing, StopPairing,
+  // EnterPasskey, Disconnect and ForgetTarget return ERROR_CODE_NOT_READY.
+  bool ready = 6;
+  LinkState link = 7;
+  // The connected Target. Missing unless link is LINK_STATE_CONNECTED.
+  optional Target connected = 8;
+  // Targets paired with the current combination of keyboard and mouse. Empty until ready.
+  repeated Target targets = 9;
+  // Keyboard LEDs set by the connected Target: bit 0 Num Lock, bit 1 Caps Lock, bit 2 Scroll Lock,
+  // bit 3 Compose, bit 4 Kana. Reset to 0 when a Target connects or disconnects.
+  uint32 leds = 10;
+  // The connected Target set the wheel resolution multiplier, so it reads vertical scrolling in
+  // 1/120 of a detent. The horizontal pan multiplier is separate and not reported.
+  bool smooth_scrolling = 11;
+  // The battery level reported to Targets, 0..100.
+  uint32 battery = 12;
+  // How many Targets can be paired with each combination of keyboard and mouse. 0 until ready.
+  uint32 max_targets = 13;
+}
+
+message Config {
+  // Effective name shown to Targets: the saved name, or the default name when none is saved.
+  string name = 1;
+  bool keyboard = 2;
+  bool mouse = 3;
+  Security security = 4;
+}
+
+enum Security {
+  // Pairing completes without a passkey.
+  SECURITY_JUST_WORKS = 0;
+  // The Target shows a passkey that the user types into the app.
+  SECURITY_PASSKEY = 1;
+}
+
+enum LinkState {
+  // Bluetooth has not started, or has failed.
+  LINK_STATE_OFF = 0;
+  // Waiting for a paired Target to connect.
+  LINK_STATE_WAITING = 1;
+  // Discoverable, waiting for a new Target to pair, with no Target connected.
+  LINK_STATE_PAIRING = 2;
+  // A Target is connected. Input reaches it once the link is encrypted; until then, input is
+  // discarded.
+  LINK_STATE_CONNECTED = 3;
+}
+
+enum AddressType {
+  ADDRESS_TYPE_PUBLIC = 0;
+  ADDRESS_TYPE_RANDOM = 1;
+}
+
+message Target {
+  // Required. Bluetooth address, 6 bytes, most significant byte first. The identity address of a
+  // paired Target. A connected Target reports the address it connected from until the Dongle
+  // learns its identity address.
+  bytes address = 1;
+  AddressType address_type = 2;
+}
+
+message PasskeyRequest {}
+
+message PairingResult {
+  // The Target paired and the pairing is saved. False when the attempt failed or was rejected, or
+  // when saving the pairing failed, in which case the Dongle removed it and disconnected the
+  // Target.
+  bool success = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+
+// A Client treats a code it does not know as a generic failure.
+enum ErrorCode {
+  // Not sent by the Dongle.
+  ERROR_CODE_UNSPECIFIED = 0;
+  // The frame was not a ClientMessage, was too long, or held neither a Request nor Input. Sent
+  // with Response.id 0.
+  ERROR_CODE_INVALID_REQUEST = 1;
+  // A value is missing or out of range.
+  ERROR_CODE_INVALID_VALUE = 2;
+  // Bluetooth has not started, or has failed. For SetConfig, the adapter's storage did not open.
+  ERROR_CODE_NOT_READY = 3;
+  // The Bluetooth stack is busy with another operation.
+  ERROR_CODE_BUSY = 4;
+  // The Target, connection or passkey prompt does not exist.
+  ERROR_CODE_NOT_FOUND = 5;
+  // Changing the adapter's storage failed. For SetConfig, the previous settings stay in effect. For
+  // ForgetTarget, the Target is removed and disconnected, but its saved pairing stays until a later
+  // attempt removes it, so it can return after the Dongle restarts.
+  ERROR_CODE_STORAGE_FAILED = 6;
+  // This firmware does not support the command.
+  ERROR_CODE_UNSUPPORTED = 7;
+  // The Bluetooth stack rejected the operation.
+  ERROR_CODE_RADIO_FAILED = 8;
+  // The Request has no command, or one newer than the firmware.
+  ERROR_CODE_UNKNOWN_COMMAND = 9;
+}
+
+message Error {
+  // Required.
+  ErrorCode code = 1;
+}

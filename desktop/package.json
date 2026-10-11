@@ -1,0 +1,53 @@
+{
+  "name": "debonair-desktop",
+  "productName": "Debonair",
+  "version": "0.0.0",
+  "description": "Use this computer as a Bluetooth keyboard and mouse through a Debonair adapter",
+  "private": true,
+  "type": "module",
+  "main": "out/main/index.js",
+  "author": "Ryan Petris <ryan@petris.net>",
+  "license": "MIT",
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "generate": "npm --workspace @debonair/protocol run generate",
+    "check:generated": "npm --workspace @debonair/protocol run check:generated",
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "build": "vite build --config vite.main.config.mjs && vite build --config vite.preload.config.mjs && vite build --config vite.renderer.config.mjs",
+    "start": "npm run build && electron .",
+    "check": "npm run check:generated && npm run typecheck && npm test",
+    "smoke": "node scripts/smoke.mjs",
+    "simulate": "npm run build && cargo build --manifest-path ../rust/Cargo.toml -p debonair-sim && DEBONAIR_SIMULATOR=../rust/target/debug/debonair-sim electron ."
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "serialport": "13.0.0"
+  },
+  "devDependencies": {
+    "@debonair/protocol": "0.0.0",
+    "@types/node": "26.6.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3",
+    "playwright": "1.63.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
+  },
+  "desktopName": "debonair-desktop.desktop",
+  "allowScripts": {
+    "@serialport/bindings-cpp": true,
+    "electron-winstaller": true,
+    "fsevents": true,
+    "@bufbuild/buf": true
+  }
+}

@@ -1,0 +1,12 @@
+[package]
+name = "debonair-sim"
+description = "An adapter simulator on the host, for developing and testing the app without hardware"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+debonair-core.workspace = true
+heapless = { version = "=0.9.3", default-features = false }

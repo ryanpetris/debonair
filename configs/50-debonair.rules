@@ -1,0 +1,2 @@
+# Gives the signed-in local user access to the serial port of Debonair adapters.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="0001", ATTRS{manufacturer}=="Debonair", TAG+="uaccess"
